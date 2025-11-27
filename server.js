@@ -125,8 +125,8 @@ app.post('/api/increment-level', (req, res) => {
 
     // Update user's level by incrementing by 1
     const query = user_id 
-        ? 'UPDATE users SET level = level + 1 WHERE user_id = ?'
-        : 'UPDATE users SET level = level + 1 WHERE username = ?';
+        ? 'UPDATE user SET level = level + 1 WHERE user_id = ?'
+        : 'UPDATE user SET level = level + 1 WHERE username = ?';
     const param = user_id || username;
 
     db.query(query, [param], (err, results) => {
