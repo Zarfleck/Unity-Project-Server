@@ -115,6 +115,34 @@ app.post('/api/game', (req, res) => {
     });
 });
 
+// Increment level endpoint
+app.post('/api/increment-level', (req, res) => {
+    const { username, user_id } = req.body;
+
+    if (!username && !user_id) {
+        return res.status(400).json({ success: false, message: 'Username or user_id required' });
+    }
+
+    // Update user's level by incrementing by 1
+    const query = user_id 
+        ? 'UPDATE users SET level = level + 1 WHERE user_id = ?'
+        : 'UPDATE users SET level = level + 1 WHERE username = ?';
+    const param = user_id || username;
+
+    db.query(query, [param], (err, results) => {
+        if (err) {
+            console.error('Database error:', err);
+            return res.status(500).json({ success: false, message: 'Database error' });
+        }
+
+        if (results.affectedRows === 0) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        res.json({ success: true, message: 'Level incremented successfully' });
+    });
+});
+
 // Example GET endpoint
 app.get('/api/players', (req, res) => {
     res.json({ players: [] });
