@@ -194,6 +194,22 @@ app.post('/api/increment-level', (req, res) => {
     });
 });
 
+app.post('/api/reset-level', (req, res) => {
+    const { username, user_id } = req.body;
+    if (!username && !user_id) {
+        return res.status(400).json({ success: false, message: 'Username or user_id required' });
+    }
+    const query = user_id ? 'UPDATE user SET level = 0 WHERE user_id = ?' : 'UPDATE user SET level = 0 WHERE username = ?';
+    const param = user_id || username;
+    db.query(query, [param], (err, results) => {
+        if (err) {
+            console.error('Database error:', err);
+            return res.status(500).json({ success: false, message: 'Database error' });
+        }
+        res.json({ success: true, message: 'Level reset successfully' });
+    });
+});
+
 // Example GET endpoint
 app.get('/api/players', (req, res) => {
     res.json({ players: [] });
