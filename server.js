@@ -195,13 +195,12 @@ app.post('/api/increment-level', (req, res) => {
 });
 
 app.post('/api/reset-level', (req, res) => {
-    const { username, user_id } = req.body;
-    if (!username && !user_id) {
-        return res.status(400).json({ success: false, message: 'Username or user_id required' });
+    const { user_id } = req.body;
+    if (!user_id) {
+        return res.status(400).json({ success: false, message: 'user_id required' });
     }
-    const query = user_id ? 'UPDATE user SET level = 0 WHERE user_id = ?' : 'UPDATE user SET level = 0 WHERE username = ?';
-    const param = user_id || username;
-    db.query(query, [param], (err, results) => {
+    const query = 'UPDATE user SET level = 0 WHERE user_id = ?';
+    db.query(query, [user_id], (err, results) => {
         if (err) {
             console.error('Database error:', err);
             return res.status(500).json({ success: false, message: 'Database error' });
