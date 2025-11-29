@@ -41,7 +41,10 @@ db.connect((err) => {
 });
 
 // Middleware
-app.use(cors());
+app.use(cors({
+    origin: true, // Allow all origins (change to specific origin in production)
+    credentials: true // Allow cookies to be sent
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -86,6 +89,7 @@ if (mongodb_user && mongodb_password) {
 }
 
 app.use(session({ 
+    name: 'session', // Cookie name (default is 'connect.sid')
     secret: sessionSecret || 'fallback-secret-change-in-production',
     store: mongoStore,
     saveUninitialized: false, 
@@ -93,9 +97,22 @@ app.use(session({
     cookie: {
         maxAge: expireTime,
         httpOnly: true,
-        secure: false // Set to true if using HTTPS
+        secure: false, // Set to true if using HTTPS
+        sameSite: 'lax' // CSRF protection
     }
 }));
+
+// Session validation middleware
+const requireSession = (req, res, next) => {
+    if (req.session && req.session.user) {
+        return next();
+    }
+    return res.status(401).json({ 
+        success: false, 
+        message: 'Session required. Please log in.',
+        code: 'SESSION_REQUIRED'
+    });
+};
 
 // Basic route
 app.get('/', (req, res) => {
@@ -158,11 +175,32 @@ app.post('/api/login', (req, res) => {
     });
 });
 
-// Game endpoint - retrieves level from user table
-app.post('/api/game', (req, res) => {
-    const { username, user_id } = req.body;
+// Logout endpoint
+app.post('/api/logout', requireSession, (req, res) => {
+    req.session.destroy((err) => {
+        if (err) {
+            console.error('Session destroy error:', err);
+            return res.status(500).json({ success: false, message: 'Logout error' });
+        }
+        res.clearCookie('session');
+        res.json({ success: true, message: 'Logout successful' });
+    });
+});
 
-    console.log("Got here")
+// Get current session info
+app.get('/api/session', requireSession, (req, res) => {
+    res.json({ 
+        success: true, 
+        user: req.session.user,
+        sessionId: req.sessionID
+    });
+});
+
+// Game endpoint - retrieves level from user table
+app.post('/api/game', requireSession, (req, res) => {
+    // Use session user_id if available, otherwise use request body
+    const user_id = req.session.user.user_id || req.body.user_id;
+    const username = req.body.username;
 
     if (!username && !user_id) {
         return res.status(400).json({ success: false, message: 'Username or user_id required' });
@@ -170,8 +208,8 @@ app.post('/api/game', (req, res) => {
 
     // Query database for user's level
     const query = user_id 
-        ? 'SELECT level FROM users WHERE user_id = ?'
-        : 'SELECT level FROM users WHERE username = ?';
+        ? 'SELECT level FROM user WHERE user_id = ?'
+        : 'SELECT level FROM user WHERE username = ?';
     const param = user_id || username;
 
     db.query(query, [param], (err, results) => {
@@ -189,21 +227,14 @@ app.post('/api/game', (req, res) => {
 });
 
 // Increment level endpoint
-app.post('/api/increment-level', (req, res) => {
-    const { username, user_id } = req.body;
-
-
-    if (!username && !user_id) {
-        return res.status(400).json({ success: false, message: 'Username or user_id required' });
-    }
+app.post('/api/increment-level', requireSession, (req, res) => {
+    // Use session user_id to ensure user can only increment their own level
+    const user_id = req.session.user.user_id;
 
     // Update user's level by incrementing by 1
-    const query = user_id 
-        ? 'UPDATE user SET level = level + 1 WHERE user_id = ?'
-        : 'UPDATE user SET level = level + 1 WHERE username = ?';
-    const param = user_id || username;
+    const query = 'UPDATE user SET level = level + 1 WHERE user_id = ?';
 
-    db.query(query, [param], (err, results) => {
+    db.query(query, [user_id], (err, results) => {
         if (err) {
             console.error('Database error:', err);
             return res.status(500).json({ success: false, message: 'Database error' });
@@ -217,11 +248,9 @@ app.post('/api/increment-level', (req, res) => {
     });
 });
 
-app.post('/api/reset-level', (req, res) => {
-    const { user_id } = req.body;
-    if (!user_id) {
-        return res.status(400).json({ success: false, message: 'user_id required' });
-    }
+app.post('/api/reset-level', requireSession, (req, res) => {
+    // Use session user_id to ensure user can only reset their own level
+    const user_id = req.session.user.user_id;
     const query = 'UPDATE user SET level = 1 WHERE user_id = ?';
     db.query(query, [user_id], (err, results) => {
         if (err) {
