@@ -62,14 +62,35 @@ if (!mongodb_user || !mongodb_password) {
     console.error('WARNING: MONGODB_USER and MONGODB_PASSWORD must be set in .env file');
 }
 
-const mongoStore = MongoStore.create({
-    mongoUrl: `mongodb+srv://${mongodb_user}:${mongodb_password}@cluster0.gzq1fkp.mongodb.net/game_sessions?retryWrites=true&w=majority&appName=Cluster0`,
-    crypto: mongodb_session_secret ? {
-        secret: mongodb_session_secret,
-    } : undefined,
-    ttl: 3600,  // Session expiration in seconds (1 hour = 3600 seconds)
-    autoRemove: 'native', 
-});
+let mongoStore;
+if (mongodb_user && mongodb_password) {
+    // URL encode credentials to handle special characters
+    const encodedUser = encodeURIComponent(mongodb_user);
+    const encodedPassword = encodeURIComponent(mongodb_password);
+    const mongoUrl = `mongodb+srv://${encodedUser}:${encodedPassword}@cluster0.gzq1fkp.mongodb.net/game_sessions?retryWrites=true&w=majority&appName=Cluster0`;
+    
+    mongoStore = MongoStore.create({
+        mongoUrl: mongoUrl,
+        ttl: 3600,  // Session expiration in seconds (1 hour = 3600 seconds)
+        autoRemove: 'native',
+        touchAfter: 24 * 3600, // lazy session update
+    });
+    
+    // Handle store errors
+    mongoStore.on('error', (error) => {
+        console.error('MongoDB session store error:', error);
+    });
+    
+    mongoStore.on('connected', () => {
+        console.log('MongoDB session store connected');
+    });
+    
+    mongoStore.on('disconnected', () => {
+        console.log('MongoDB session store disconnected');
+    });
+} else {
+    console.warn('MongoDB session store not initialized - missing credentials');
+}
 
 app.use(session({ 
     secret: sessionSecret || 'fallback-secret-change-in-production',
@@ -95,7 +116,6 @@ app.get('/health', (req, res) => {
 
 // Login endpoint
 app.post('/api/login', (req, res) => {
-    console.log("Got here")
     const { username, password } = req.body;
 
     if (!username || !password) {
@@ -109,6 +129,7 @@ app.post('/api/login', (req, res) => {
             console.error('Database error:', err);
             return res.status(500).json({ success: false, message: 'Database error' });
         }
+        console.log(results)
 
         if (results.length === 0) {
             return res.status(401).json({ success: false, message: 'Invalid username or password' });
@@ -127,10 +148,18 @@ app.post('/api/login', (req, res) => {
             };
             req.session.cookie.maxAge = expireTime;
             
-            res.json({ 
-                success: true, 
-                message: 'Login successful', 
-                user: user 
+            // Save session and handle errors
+            req.session.save((err) => {
+                if (err) {
+                    console.error('Session save error:', err);
+                    return res.status(500).json({ success: false, message: 'Session error' });
+                }
+                console.log("Success");
+                res.json({ 
+                    success: true, 
+                    message: 'Login successful', 
+                    user: user 
+                });
             });
         } else {
             res.status(401).json({ success: false, message: 'Invalid username or password' });
@@ -141,6 +170,8 @@ app.post('/api/login', (req, res) => {
 // Game endpoint - retrieves level from user table
 app.post('/api/game', (req, res) => {
     const { username, user_id } = req.body;
+
+    console.log("Got here")
 
     if (!username && !user_id) {
         return res.status(400).json({ success: false, message: 'Username or user_id required' });
@@ -169,6 +200,7 @@ app.post('/api/game', (req, res) => {
 // Increment level endpoint
 app.post('/api/increment-level', (req, res) => {
     const { username, user_id } = req.body;
+
 
     if (!username && !user_id) {
         return res.status(400).json({ success: false, message: 'Username or user_id required' });
@@ -199,7 +231,7 @@ app.post('/api/reset-level', (req, res) => {
     if (!user_id) {
         return res.status(400).json({ success: false, message: 'user_id required' });
     }
-    const query = 'UPDATE user SET level = 0 WHERE user_id = ?';
+    const query = 'UPDATE user SET level = 1 WHERE user_id = ?';
     db.query(query, [user_id], (err, results) => {
         if (err) {
             console.error('Database error:', err);
