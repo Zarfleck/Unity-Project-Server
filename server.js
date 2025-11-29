@@ -28,13 +28,6 @@ const dbConfig = {
     } : false
 };
 
-console.log('Attempting MySQL connection to:', {
-    host: dbConfig.host,
-    port: dbConfig.port,
-    user: dbConfig.user,
-    database: dbConfig.database
-});
-
 const db = mysql.createConnection(dbConfig);
 
 // Connect to MySQL
@@ -129,14 +122,12 @@ app.post('/api/login', (req, res) => {
             console.error('Database error:', err);
             return res.status(500).json({ success: false, message: 'Database error' });
         }
-        console.log(results)
 
         if (results.length === 0) {
             return res.status(401).json({ success: false, message: 'Invalid username or password' });
         }
 
         const user = results[0];
-        console.log(user);
         // Compare provided password with hashed password in database
         const passwordMatch = await bcrypt.compare(password, user.password);
         
