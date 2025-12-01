@@ -124,6 +124,89 @@ app.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Signup endpoint
+app.post('/api/signup', async (req, res) => {
+    const { username, password } = req.body;
+
+    // Validation
+    if (!username || !password) {
+        return res.status(400).json({ success: false, message: 'Username and password required' });
+    }
+
+    if (username.length < 3) {
+        return res.status(400).json({ success: false, message: 'Username must be at least 3 characters long' });
+    }
+
+    if (password.length < 6) {
+        return res.status(400).json({ success: false, message: 'Password must be at least 6 characters long' });
+    }
+
+    // Check if username already exists
+    const checkQuery = 'SELECT * FROM user WHERE username = ?';
+    db.query(checkQuery, [username], async (err, results) => {
+        if (err) {
+            console.error('Database error:', err);
+            return res.status(500).json({ success: false, message: 'Database error' });
+        }
+
+        if (results.length > 0) {
+            return res.status(409).json({ success: false, message: 'Username already exists' });
+        }
+
+        // Hash password
+        const saltRounds = 12;
+        try {
+            const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+            // Insert new user into database
+            const insertQuery = 'INSERT INTO user (username, password, level, user_type_id) VALUES (?, ?, 0, 1)';
+            db.query(insertQuery, [username, hashedPassword], async (err, results) => {
+                if (err) {
+                    console.error('Database error:', err);
+                    return res.status(500).json({ success: false, message: 'Database error' });
+                }
+
+                const newUserId = results.insertId;
+
+                // Fetch the created user
+                const getUserQuery = 'SELECT * FROM user WHERE user_id = ?';
+                db.query(getUserQuery, [newUserId], async (err, userResults) => {
+                    if (err) {
+                        console.error('Database error:', err);
+                        return res.status(500).json({ success: false, message: 'Database error' });
+                    }
+
+                    const user = userResults[0];
+
+                    // Create session
+                    req.session.user = {
+                        user_id: user.user_id,
+                        username: user.username
+                    };
+                    req.session.cookie.maxAge = expireTime;
+
+                    // Save session and handle errors
+                    req.session.save((err) => {
+                        if (err) {
+                            console.error('Session save error:', err);
+                            return res.status(500).json({ success: false, message: 'Session error' });
+                        }
+
+                        res.status(201).json({
+                            success: true,
+                            message: 'Account created successfully',
+                            user: user
+                        });
+                    });
+                });
+            });
+        } catch (hashError) {
+            console.error('Password hashing error:', hashError);
+            return res.status(500).json({ success: false, message: 'Error creating account' });
+        }
+    });
+});
+
 // Login endpoint
 app.post('/api/login', (req, res) => {
     const { username, password } = req.body;
