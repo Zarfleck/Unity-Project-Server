@@ -124,6 +124,8 @@ app.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+
+
 // Signup endpoint
 app.post('/api/signup', async (req, res) => {
     const { username, password } = req.body;
@@ -279,6 +281,65 @@ app.get('/api/session', requireSession, (req, res) => {
     });
 });
 
+// Get user endpoint - returns user data for session validation
+app.post('/api/get-user', requireSession, (req, res) => {
+    const { user_id, username } = req.body;
+    const sessionUserId = req.session.user.user_id;
+    const sessionUsername = req.session.user.username;
+
+    // Use session user_id for security (user can only get their own data)
+    const targetUserId = user_id ? parseInt(user_id) : sessionUserId;
+    const targetUsername = username || sessionUsername;
+
+    // Security check: ensure user can only access their own data
+    if (targetUserId && targetUserId !== sessionUserId) {
+        return res.status(403).json({ 
+            success: false, 
+            message: 'Access denied. You can only access your own user data.',
+            code: 'ACCESS_DENIED'
+        });
+    }
+
+    // Query database for user
+    const query = targetUserId 
+        ? 'SELECT user_id, username, level, user_type_id, profile_image_url FROM user WHERE user_id = ?'
+        : 'SELECT user_id, username, level, user_type_id, profile_image_url FROM user WHERE username = ?';
+    const param = targetUserId || targetUsername;
+
+    db.query(query, [param], (err, results) => {
+        if (err) {
+            console.error('Database error:', err);
+            return res.status(500).json({ success: false, message: 'Database error' });
+        }
+
+        if (results.length === 0) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        const user = results[0];
+
+        // Verify the user matches the session
+        if (user.user_id !== sessionUserId) {
+            return res.status(403).json({ 
+                success: false, 
+                message: 'Access denied. You can only access your own user data.',
+                code: 'ACCESS_DENIED'
+            });
+        }
+
+        res.json({ 
+            success: true, 
+            user: {
+                user_id: user.user_id,
+                username: user.username,
+                level: user.level,
+                user_type_id: user.user_type_id,
+                profile_image_url: user.profile_image_url
+            }
+        });
+    });
+});
+
 // Game endpoint - retrieves level from user table
 app.post('/api/game', requireSession, (req, res) => {
     // Use session user_id if available, otherwise use request body
@@ -344,10 +405,6 @@ app.post('/api/reset-level', requireSession, (req, res) => {
     });
 });
 
-// Example GET endpoint
-app.get('/api/players', (req, res) => {
-    res.json({ players: [] });
-});
 
 // Start server
 app.listen(PORT, () => {
