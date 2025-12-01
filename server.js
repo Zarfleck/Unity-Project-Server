@@ -40,14 +40,31 @@ db.connect((err) => {
     }
 });
 
-// Middleware
-app.use(cors({
+// CORS configuration
+const corsOptions = {
     origin: true, // Allow all origins (change to specific origin in production)
     credentials: true, // Allow cookies to be sent
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie', 'X-Session-Token'],
     exposedHeaders: ['Set-Cookie']
-}));
+};
+
+// Apply CORS middleware
+app.use(cors(corsOptions));
+
+// Handle preflight OPTIONS requests explicitly
+app.options('*', cors(corsOptions));
+
+// Middleware to ensure CORS headers are always set
+app.use((req, res, next) => {
+    // Set CORS headers manually as backup
+    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cookie, X-Session-Token');
+    next();
+});
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -109,6 +126,14 @@ app.use(session({
     }
 }));
 
+// Helper function to set CORS headers
+const setCorsHeaders = (req, res) => {
+    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cookie, X-Session-Token');
+};
+
 // Session validation middleware - supports both cookie and token auth
 const requireSession = (req, res, next) => {
     // Check for session cookie first
@@ -124,6 +149,7 @@ const requireSession = (req, res, next) => {
         // Validate token by looking up session in MongoDB
         if (!mongoStore) {
             console.error('MongoDB store not available for token validation');
+            setCorsHeaders(req, res);
             return res.status(500).json({ 
                 success: false, 
                 message: 'Server configuration error',
@@ -137,6 +163,7 @@ const requireSession = (req, res, next) => {
             if (!responded) {
                 responded = true;
                 console.error('MongoDB session lookup timeout for token');
+                setCorsHeaders(req, res);
                 return res.status(500).json({ 
                     success: false, 
                     message: 'Session lookup timeout',
@@ -153,6 +180,7 @@ const requireSession = (req, res, next) => {
             if (err) {
                 responded = true;
                 console.error('MongoDB session lookup error:', err);
+                setCorsHeaders(req, res);
                 return res.status(500).json({ 
                     success: false, 
                     message: 'Session lookup error',
@@ -182,6 +210,7 @@ const requireSession = (req, res, next) => {
                 
                 if (err2) {
                     console.error('MongoDB session lookup error (prefixed):', err2);
+                    setCorsHeaders(req, res);
                     return res.status(500).json({ 
                         success: false, 
                         message: 'Session lookup error',
@@ -203,6 +232,7 @@ const requireSession = (req, res, next) => {
                 
                 // Not found in either format
                 console.log('Invalid or expired session token');
+                setCorsHeaders(req, res);
                 return res.status(401).json({ 
                     success: false, 
                     message: 'Session required. Please log in.',
@@ -211,6 +241,7 @@ const requireSession = (req, res, next) => {
             });
         });
     } else {
+        setCorsHeaders(req, res);
         return res.status(401).json({ 
             success: false, 
             message: 'Session required. Please log in.',
@@ -545,6 +576,9 @@ app.post('/api/reset-level', requireSession, (req, res) => {
 // Error handling middleware - ensure CORS headers are always sent
 app.use((err, req, res, next) => {
     console.error('Unhandled error:', err);
+    // Ensure CORS headers are set even on errors
+    setCorsHeaders(req, res);
+    
     res.status(err.status || 500).json({ 
         success: false, 
         message: err.message || 'Internal server error',
