@@ -160,11 +160,17 @@ const requireSession = (req, res, next) => {
                 });
             }
             
-            // If found, use it
+            // If found, restore session properly
             if (sessionData && sessionData.user) {
                 responded = true;
-                req.session = sessionData;
+                // Set session ID
                 req.sessionID = token;
+                // Restore user data to existing session object (preserves Session prototype)
+                req.session.user = sessionData.user;
+                // Restore cookie if it exists
+                if (sessionData.cookie) {
+                    Object.assign(req.session.cookie, sessionData.cookie);
+                }
                 return next();
             }
             
@@ -184,8 +190,14 @@ const requireSession = (req, res, next) => {
                 }
                 
                 if (sessionData2 && sessionData2.user) {
-                    req.session = sessionData2;
+                    // Set session ID
                     req.sessionID = prefixedToken;
+                    // Restore user data to existing session object (preserves Session prototype)
+                    req.session.user = sessionData2.user;
+                    // Restore cookie if it exists
+                    if (sessionData2.cookie) {
+                        Object.assign(req.session.cookie, sessionData2.cookie);
+                    }
                     return next();
                 }
                 
