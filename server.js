@@ -109,16 +109,46 @@ app.use(session({
     }
 }));
 
-// Session validation middleware
+// Session validation middleware - supports both cookie and token auth
 const requireSession = (req, res, next) => {
+    // Check for session cookie first
     if (req.session && req.session.user) {
         return next();
     }
-    return res.status(401).json({ 
-        success: false, 
-        message: 'Session required. Please log in.',
-        code: 'SESSION_REQUIRED'
-    });
+    
+    // Check for token in Authorization header (fallback for Unity WebGL)
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.replace('Bearer ', '');
+        // Validate token by looking up session in MongoDB
+        if (mongoStore) {
+            mongoStore.get(token, (err, sessionData) => {
+                if (err || !sessionData || !sessionData.user) {
+                    return res.status(401).json({ 
+                        success: false, 
+                        message: 'Session required. Please log in.',
+                        code: 'SESSION_REQUIRED'
+                    });
+                }
+                // Attach session data to request
+                req.session = sessionData;
+                req.sessionID = token;
+                return next();
+            });
+        } else {
+            return res.status(401).json({ 
+                success: false, 
+                message: 'Session required. Please log in.',
+                code: 'SESSION_REQUIRED'
+            });
+        }
+    } else {
+        return res.status(401).json({ 
+            success: false, 
+            message: 'Session required. Please log in.',
+            code: 'SESSION_REQUIRED'
+        });
+    }
 };
 
 // Basic route
@@ -204,7 +234,8 @@ app.post('/api/signup', async (req, res) => {
                         res.status(201).json({
                             success: true,
                             message: 'Account created successfully',
-                            user: user
+                            user: user,
+                            sessionToken: req.sessionID // Add token for Unity to use
                         });
                     });
                 });
@@ -255,10 +286,12 @@ app.post('/api/login', (req, res) => {
                     return res.status(500).json({ success: false, message: 'Session error' });
                 }
                 console.log("Success");
+                // Return session token for Unity WebGL (cookie may not work)
                 res.json({ 
                     success: true, 
                     message: 'Login successful', 
-                    user: user 
+                    user: user,
+                    sessionToken: req.sessionID // Add token for Unity to use
                 });
             });
         } else {
