@@ -83,6 +83,16 @@ app.use(cors(corsOptions));
 // Handle preflight OPTIONS requests explicitly
 app.options('*', cors(corsOptions));
 
+// Debug middleware to log CORS headers
+app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    if (origin) {
+        console.log(`[CORS Debug] Request from origin: ${origin}`);
+        console.log(`[CORS Debug] Method: ${req.method}, Path: ${req.path}`);
+    }
+    next();
+});
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -490,6 +500,7 @@ app.post('/api/get-user', requireSession, (req, res) => {
 
     // Security check: ensure user can only access their own data
     if (targetUserId && targetUserId !== sessionUserId) {
+        setCorsHeaders(req, res);
         return res.status(403).json({ 
             success: false, 
             message: 'Access denied. You can only access your own user data.',
@@ -506,10 +517,12 @@ app.post('/api/get-user', requireSession, (req, res) => {
     db.query(query, [param], (err, results) => {
         if (err) {
             console.error('Database error:', err);
+            setCorsHeaders(req, res);
             return res.status(500).json({ success: false, message: 'Database error' });
         }
 
         if (results.length === 0) {
+            setCorsHeaders(req, res);
             return res.status(404).json({ success: false, message: 'User not found' });
         }
 
@@ -517,6 +530,7 @@ app.post('/api/get-user', requireSession, (req, res) => {
 
         // Verify the user matches the session
         if (user.user_id !== sessionUserId) {
+            setCorsHeaders(req, res);
             return res.status(403).json({ 
                 success: false, 
                 message: 'Access denied. You can only access your own user data.',
@@ -524,6 +538,8 @@ app.post('/api/get-user', requireSession, (req, res) => {
             });
         }
 
+        // Success response - CORS headers should be set by middleware, but ensure they're there
+        setCorsHeaders(req, res);
         res.json({ 
             success: true, 
             user: {
@@ -608,7 +624,27 @@ app.post('/api/reset-level', requireSession, (req, res) => {
 // Error handling middleware - ensure CORS headers are always sent
 app.use((err, req, res, next) => {
     console.error('Unhandled error:', err);
-    // Ensure CORS headers are set even on errors
+    
+    // Handle CORS errors specifically
+    if (err.message && err.message.includes('CORS')) {
+        console.error('[CORS Error]', err.message);
+        const origin = req.headers.origin;
+        if (origin && allowedOrigins.includes(origin)) {
+            // If origin is actually allowed, set headers anyway
+            res.header('Access-Control-Allow-Origin', origin);
+            res.header('Access-Control-Allow-Credentials', 'true');
+            res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+            res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cookie, X-Session-Token, X-Requested-With');
+        }
+        return res.status(403).json({ 
+            success: false, 
+            message: 'CORS policy violation',
+            code: 'CORS_ERROR',
+            origin: origin
+        });
+    }
+    
+    // Ensure CORS headers are set even on other errors
     setCorsHeaders(req, res);
     
     res.status(err.status || 500).json({ 
