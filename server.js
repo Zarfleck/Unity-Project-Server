@@ -43,6 +43,7 @@ db.connect((err) => {
 // CORS configuration - Allow Unity WebGL origin
 const allowedOrigins = [
     'https://webgl-unity-game.netlify.app',
+    'https://webgl-unity-game.netlify.app/', // With trailing slash
     'http://localhost:3000', // For local testing
     'http://localhost:8080', // Common local dev port
     'http://127.0.0.1:3000',
@@ -52,15 +53,28 @@ const allowedOrigins = [
 const corsOptions = {
     origin: (origin, callback) => {
         // Allow requests with no origin (like mobile apps, Postman, or curl)
-        if (!origin) return callback(null, true);
+        if (!origin) {
+            console.log('[CORS] Request with no origin - allowing');
+            return callback(null, true);
+        }
         
-        if (allowedOrigins.includes(origin)) {
+        // Normalize origin (remove trailing slash)
+        const normalizedOrigin = origin.endsWith('/') ? origin.slice(0, -1) : origin;
+        const normalizedAllowed = allowedOrigins.map(o => o.endsWith('/') ? o.slice(0, -1) : o);
+        
+        console.log(`[CORS] Checking origin: ${normalizedOrigin}`);
+        
+        if (normalizedAllowed.includes(normalizedOrigin)) {
+            console.log(`[CORS] Origin allowed: ${normalizedOrigin}`);
             callback(null, true);
         } else {
             // In development, allow all origins; in production, be strict
-            if (process.env.NODE_ENV !== 'production') {
+            const isDevelopment = process.env.NODE_ENV !== 'production' && !process.env.RENDER;
+            if (isDevelopment) {
+                console.log(`[CORS] Development mode - allowing origin: ${normalizedOrigin}`);
                 callback(null, true); // Allow in development
             } else {
+                console.error(`[CORS] Origin not allowed: ${normalizedOrigin}. Allowed: ${normalizedAllowed.join(', ')}`);
                 callback(new Error('Not allowed by CORS'));
             }
         }
@@ -81,12 +95,22 @@ app.options('*', cors(corsOptions));
 app.use((req, res, next) => {
     const origin = req.headers.origin;
     
-    // Set CORS headers if origin is allowed
-    if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production') {
-        res.header('Access-Control-Allow-Origin', origin || '*');
-        res.header('Access-Control-Allow-Credentials', 'true');
-        res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-        res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cookie, X-Session-Token, X-Requested-With');
+    if (origin) {
+        // Normalize origin (remove trailing slash)
+        const normalizedOrigin = origin.endsWith('/') ? origin.slice(0, -1) : origin;
+        const normalizedAllowed = allowedOrigins.map(o => o.endsWith('/') ? o.slice(0, -1) : o);
+        const isDevelopment = process.env.NODE_ENV !== 'production' && !process.env.RENDER;
+        
+        // CRITICAL: Cannot use '*' with credentials: true - must use actual origin
+        if (normalizedAllowed.includes(normalizedOrigin) || isDevelopment) {
+            res.header('Access-Control-Allow-Origin', origin); // Use original origin, not normalized
+            res.header('Access-Control-Allow-Credentials', 'true');
+            res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+            res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cookie, X-Session-Token, X-Requested-With');
+        }
+    } else {
+        // No origin header (like Postman, curl) - allow but don't set credentials
+        res.header('Access-Control-Allow-Origin', '*');
     }
     
     // Handle preflight requests
@@ -162,12 +186,22 @@ app.use(session({
 const setCorsHeaders = (req, res) => {
     const origin = req.headers.origin;
     
-    // Only set CORS headers if origin is allowed or in development
-    if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production') {
-        res.header('Access-Control-Allow-Origin', origin || '*');
-        res.header('Access-Control-Allow-Credentials', 'true');
-        res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-        res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cookie, X-Session-Token, X-Requested-With');
+    if (origin) {
+        // Normalize origin (remove trailing slash)
+        const normalizedOrigin = origin.endsWith('/') ? origin.slice(0, -1) : origin;
+        const normalizedAllowed = allowedOrigins.map(o => o.endsWith('/') ? o.slice(0, -1) : o);
+        const isDevelopment = process.env.NODE_ENV !== 'production' && !process.env.RENDER;
+        
+        // CRITICAL: Cannot use '*' with credentials: true - must use actual origin
+        if (normalizedAllowed.includes(normalizedOrigin) || isDevelopment) {
+            res.header('Access-Control-Allow-Origin', origin); // Use original origin, not normalized
+            res.header('Access-Control-Allow-Credentials', 'true');
+            res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+            res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cookie, X-Session-Token, X-Requested-With');
+        }
+    } else {
+        // No origin header (like Postman, curl) - allow but don't set credentials
+        res.header('Access-Control-Allow-Origin', '*');
     }
 };
 
