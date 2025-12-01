@@ -40,12 +40,34 @@ db.connect((err) => {
     }
 });
 
-// CORS configuration
+// CORS configuration - Allow Unity WebGL origin
+const allowedOrigins = [
+    'https://webgl-unity-game.netlify.app',
+    'http://localhost:3000', // For local testing
+    'http://localhost:8080', // Common local dev port
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:8080'
+];
+
 const corsOptions = {
-    origin: true, // Allow all origins (change to specific origin in production)
-    credentials: true, // Allow cookies to be sent
+    origin: (origin, callback) => {
+        // Allow requests with no origin (like mobile apps, Postman, or curl)
+        if (!origin) return callback(null, true);
+        
+        if (allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            // In development, allow all origins; in production, be strict
+            if (process.env.NODE_ENV !== 'production') {
+                callback(null, true); // Allow in development
+            } else {
+                callback(new Error('Not allowed by CORS'));
+            }
+        }
+    },
+    credentials: true, // Required for cookies/sessions
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie', 'X-Session-Token'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie', 'X-Session-Token', 'X-Requested-With'],
     exposedHeaders: ['Set-Cookie']
 };
 
@@ -55,13 +77,23 @@ app.use(cors(corsOptions));
 // Handle preflight OPTIONS requests explicitly
 app.options('*', cors(corsOptions));
 
-// Middleware to ensure CORS headers are always set
+// Middleware to ensure CORS headers are always set (backup)
 app.use((req, res, next) => {
-    // Set CORS headers manually as backup
-    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
-    res.header('Access-Control-Allow-Credentials', 'true');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cookie, X-Session-Token');
+    const origin = req.headers.origin;
+    
+    // Set CORS headers if origin is allowed
+    if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production') {
+        res.header('Access-Control-Allow-Origin', origin || '*');
+        res.header('Access-Control-Allow-Credentials', 'true');
+        res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+        res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cookie, X-Session-Token, X-Requested-With');
+    }
+    
+    // Handle preflight requests
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(200);
+    }
+    
     next();
 });
 
@@ -128,10 +160,15 @@ app.use(session({
 
 // Helper function to set CORS headers
 const setCorsHeaders = (req, res) => {
-    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
-    res.header('Access-Control-Allow-Credentials', 'true');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cookie, X-Session-Token');
+    const origin = req.headers.origin;
+    
+    // Only set CORS headers if origin is allowed or in development
+    if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production') {
+        res.header('Access-Control-Allow-Origin', origin || '*');
+        res.header('Access-Control-Allow-Credentials', 'true');
+        res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+        res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cookie, X-Session-Token, X-Requested-With');
+    }
 };
 
 // Session validation middleware - supports both cookie and token auth
