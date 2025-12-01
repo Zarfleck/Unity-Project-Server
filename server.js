@@ -43,7 +43,6 @@ db.connect((err) => {
 // CORS configuration - Allow Unity WebGL origin
 const allowedOrigins = [
     'https://webgl-unity-game.netlify.app',
-    'https://webgl-unity-game.netlify.app', // With trailing slash
     'http://localhost:3000', // For local testing
     'http://localhost:8080', // Common local dev port
     'http://127.0.0.1:3000',
@@ -51,7 +50,13 @@ const allowedOrigins = [
 ];
 
 const corsOptions = {
-    origin: (origin, callback) => { 
+    origin: (origin, callback) => {
+        // Allow requests with no origin (like mobile apps, Postman, or curl)
+        if (!origin) {
+            console.log('[CORS] Request with no origin - allowing');
+            return callback(null, true);
+        }
+        
         // Normalize origin (remove trailing slash)
         const normalizedOrigin = origin.endsWith('/') ? origin.slice(0, -1) : origin;
         const normalizedAllowed = allowedOrigins.map(o => o.endsWith('/') ? o.slice(0, -1) : o);
@@ -62,15 +67,8 @@ const corsOptions = {
             console.log(`[CORS] Origin allowed: ${normalizedOrigin}`);
             callback(null, true);
         } else {
-            // In development, allow all origins; in production, be strict
-            const isDevelopment = process.env.NODE_ENV !== 'production' && !process.env.RENDER;
-            if (isDevelopment) {
-                console.log(`[CORS] Development mode - allowing origin: ${normalizedOrigin}`);
-                callback(null, true); // Allow in development
-            } else {
-                console.error(`[CORS] Origin not allowed: ${normalizedOrigin}. Allowed: ${normalizedAllowed.join(', ')}`);
-                callback(new Error('Not allowed by CORS'));
-            }
+            console.error(`[CORS] Origin not allowed: ${normalizedOrigin}. Allowed: ${normalizedAllowed.join(', ')}`);
+            callback(new Error('Not allowed by CORS'));
         }
     },
     credentials: true, // Required for cookies/sessions
@@ -84,36 +82,6 @@ app.use(cors(corsOptions));
 
 // Handle preflight OPTIONS requests explicitly
 app.options('*', cors(corsOptions));
-
-// Middleware to ensure CORS headers are always set (backup)
-app.use((req, res, next) => {
-    const origin = req.headers.origin;
-    
-    if (origin) {
-        // Normalize origin (remove trailing slash)
-        const normalizedOrigin = origin.endsWith('/') ? origin.slice(0, -1) : origin;
-        const normalizedAllowed = allowedOrigins.map(o => o.endsWith('/') ? o.slice(0, -1) : o);
-        const isDevelopment = process.env.NODE_ENV !== 'production' && !process.env.RENDER;
-        
-        // CRITICAL: Cannot use '*' with credentials: true - must use actual origin
-        if (normalizedAllowed.includes(normalizedOrigin) || isDevelopment) {
-            res.header('Access-Control-Allow-Origin', origin); // Use original origin, not normalized
-            res.header('Access-Control-Allow-Credentials', 'true');
-            res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-            res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cookie, X-Session-Token, X-Requested-With');
-        }
-    } else {
-        // No origin header (like Postman, curl) - allow but don't set credentials
-        res.header('Access-Control-Allow-Origin', '*');
-    }
-    
-    // Handle preflight requests
-    if (req.method === 'OPTIONS') {
-        return res.sendStatus(200);
-    }
-    
-    next();
-});
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -184,10 +152,9 @@ const setCorsHeaders = (req, res) => {
         // Normalize origin (remove trailing slash)
         const normalizedOrigin = origin.endsWith('/') ? origin.slice(0, -1) : origin;
         const normalizedAllowed = allowedOrigins.map(o => o.endsWith('/') ? o.slice(0, -1) : o);
-        const isDevelopment = process.env.NODE_ENV !== 'production' && !process.env.RENDER;
         
         // CRITICAL: Cannot use '*' with credentials: true - must use actual origin
-        if (normalizedAllowed.includes(normalizedOrigin) || isDevelopment) {
+        if (normalizedAllowed.includes(normalizedOrigin)) {
             res.header('Access-Control-Allow-Origin', origin); // Use original origin, not normalized
             res.header('Access-Control-Allow-Credentials', 'true');
             res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -475,7 +442,7 @@ app.post('/api/login', (req, res) => {
                 } catch (e) {
                     // If decode fails, use original
                 }
-                console.log('Session token generated:', sessionToken.substring(0, 20) + '...');
+                console.log('Session token generated:', sessionToken ? (sessionToken.substring(0, Math.min(20, sessionToken.length)) + '...') : 'null');
                 // Return session token for Unity WebGL (cookie may not work)
                 res.json({ 
                     success: true, 
