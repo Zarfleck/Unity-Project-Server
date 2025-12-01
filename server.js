@@ -43,7 +43,10 @@ db.connect((err) => {
 // Middleware
 app.use(cors({
     origin: true, // Allow all origins (change to specific origin in production)
-    credentials: true // Allow cookies to be sent
+    credentials: true, // Allow cookies to be sent
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
+    exposedHeaders: ['Set-Cookie']
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -88,6 +91,10 @@ if (mongodb_user && mongodb_password) {
     console.warn('MongoDB session store not initialized - missing credentials');
 }
 
+// Determine if we're using HTTPS
+const isProduction = process.env.NODE_ENV === 'production' || process.env.PORT;
+const isSecure = process.env.SECURE_COOKIES === 'true' || isProduction;
+
 app.use(session({ 
     name: 'session', // Cookie name (default is 'connect.sid')
     secret: sessionSecret || 'fallback-secret-change-in-production',
@@ -96,9 +103,9 @@ app.use(session({
     resave: false,
     cookie: {
         maxAge: expireTime,
-        httpOnly: true,
-        secure: false, // Set to true if using HTTPS
-        sameSite: 'lax' // CSRF protection
+        httpOnly: true, // Keep httpOnly for security
+        secure: isSecure, // true for HTTPS, false for HTTP (development)
+        sameSite: isSecure ? 'none' : 'lax' // 'none' requires secure: true for cross-origin
     }
 }));
 
