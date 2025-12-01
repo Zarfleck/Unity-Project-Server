@@ -119,29 +119,85 @@ const requireSession = (req, res, next) => {
     // Check for token in Authorization header (fallback for Unity WebGL)
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
-        const token = authHeader.replace('Bearer ', '');
+        let token = authHeader.replace('Bearer ', '').trim();
+        
         // Validate token by looking up session in MongoDB
-        if (mongoStore) {
-            mongoStore.get(token, (err, sessionData) => {
-                if (err || !sessionData || !sessionData.user) {
-                    return res.status(401).json({ 
-                        success: false, 
-                        message: 'Session required. Please log in.',
-                        code: 'SESSION_REQUIRED'
-                    });
-                }
-                // Attach session data to request
+        if (!mongoStore) {
+            console.error('MongoDB store not available for token validation');
+            return res.status(500).json({ 
+                success: false, 
+                message: 'Server configuration error',
+                code: 'SERVER_ERROR'
+            });
+        }
+        
+        // Set timeout for MongoDB lookup (5 seconds)
+        let responded = false;
+        const timeout = setTimeout(() => {
+            if (!responded) {
+                responded = true;
+                console.error('MongoDB session lookup timeout for token');
+                return res.status(500).json({ 
+                    success: false, 
+                    message: 'Session lookup timeout',
+                    code: 'TIMEOUT'
+                });
+            }
+        }, 5000);
+        
+        // Try lookup with token as-is first
+        mongoStore.get(token, (err, sessionData) => {
+            if (responded) return;
+            clearTimeout(timeout);
+            
+            if (err) {
+                responded = true;
+                console.error('MongoDB session lookup error:', err);
+                return res.status(500).json({ 
+                    success: false, 
+                    message: 'Session lookup error',
+                    code: 'SESSION_ERROR'
+                });
+            }
+            
+            // If found, use it
+            if (sessionData && sessionData.user) {
+                responded = true;
                 req.session = sessionData;
                 req.sessionID = token;
                 return next();
+            }
+            
+            // Try with 's:' prefix (express-session format)
+            const prefixedToken = 's:' + token;
+            mongoStore.get(prefixedToken, (err2, sessionData2) => {
+                if (responded) return;
+                responded = true;
+                
+                if (err2) {
+                    console.error('MongoDB session lookup error (prefixed):', err2);
+                    return res.status(500).json({ 
+                        success: false, 
+                        message: 'Session lookup error',
+                        code: 'SESSION_ERROR'
+                    });
+                }
+                
+                if (sessionData2 && sessionData2.user) {
+                    req.session = sessionData2;
+                    req.sessionID = prefixedToken;
+                    return next();
+                }
+                
+                // Not found in either format
+                console.log('Invalid or expired session token');
+                return res.status(401).json({ 
+                    success: false, 
+                    message: 'Session required. Please log in.',
+                    code: 'SESSION_REQUIRED'
+                });
             });
-        } else {
-            return res.status(401).json({ 
-                success: false, 
-                message: 'Session required. Please log in.',
-                code: 'SESSION_REQUIRED'
-            });
-        }
+        });
     } else {
         return res.status(401).json({ 
             success: false, 
@@ -231,11 +287,24 @@ app.post('/api/signup', async (req, res) => {
                             return res.status(500).json({ success: false, message: 'Session error' });
                         }
 
+                        // Get session ID - handle express-session format
+                        let sessionToken = req.sessionID;
+                        // Remove 's:' prefix if present
+                        if (sessionToken && sessionToken.startsWith('s:')) {
+                            sessionToken = sessionToken.substring(2);
+                        }
+                        // URL decode if needed
+                        try {
+                            sessionToken = decodeURIComponent(sessionToken);
+                        } catch (e) {
+                            // If decode fails, use original
+                        }
+
                         res.status(201).json({
                             success: true,
                             message: 'Account created successfully',
                             user: user,
-                            sessionToken: req.sessionID // Add token for Unity to use
+                            sessionToken: sessionToken // Add token for Unity to use
                         });
                     });
                 });
@@ -286,12 +355,25 @@ app.post('/api/login', (req, res) => {
                     return res.status(500).json({ success: false, message: 'Session error' });
                 }
                 console.log("Success");
+                // Get session ID - express-session may prefix with 's:' which gets URL encoded
+                let sessionToken = req.sessionID;
+                // Remove 's:' prefix if present (express-session default)
+                if (sessionToken && sessionToken.startsWith('s:')) {
+                    sessionToken = sessionToken.substring(2);
+                }
+                // URL decode if needed
+                try {
+                    sessionToken = decodeURIComponent(sessionToken);
+                } catch (e) {
+                    // If decode fails, use original
+                }
+                console.log('Session token generated:', sessionToken.substring(0, 20) + '...');
                 // Return session token for Unity WebGL (cookie may not work)
                 res.json({ 
                     success: true, 
                     message: 'Login successful', 
                     user: user,
-                    sessionToken: req.sessionID // Add token for Unity to use
+                    sessionToken: sessionToken // Add token for Unity to use
                 });
             });
         } else {
@@ -441,7 +523,20 @@ app.post('/api/reset-level', requireSession, (req, res) => {
             console.error('Database error:', err);
             return res.status(500).json({ success: false, message: 'Database error' });
         }
+        if (results.affectedRows === 0) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
         res.json({ success: true, message: 'Level reset successfully' });
+    });
+});
+
+// Error handling middleware - ensure CORS headers are always sent
+app.use((err, req, res, next) => {
+    console.error('Unhandled error:', err);
+    res.status(err.status || 500).json({ 
+        success: false, 
+        message: err.message || 'Internal server error',
+        code: 'INTERNAL_ERROR'
     });
 });
 
