@@ -43,7 +43,7 @@ db.connect((err) => {
 // CORS configuration - Allow Unity WebGL origin
 const allowedOrigins = [
     'https://webgl-unity-game.netlify.app',
-    'https://webgl-unity-game.netlify.app/', // With trailing slash
+    'https://webgl-unity-game.netlify.app', // With trailing slash
     'http://localhost:3000', // For local testing
     'http://localhost:8080', // Common local dev port
     'http://127.0.0.1:3000',
@@ -51,13 +51,7 @@ const allowedOrigins = [
 ];
 
 const corsOptions = {
-    origin: (origin, callback) => {
-        // Allow requests with no origin (like mobile apps, Postman, or curl)
-        if (!origin) {
-            console.log('[CORS] Request with no origin - allowing');
-            return callback(null, true);
-        }
-        
+    origin: (origin, callback) => { 
         // Normalize origin (remove trailing slash)
         const normalizedOrigin = origin.endsWith('/') ? origin.slice(0, -1) : origin;
         const normalizedAllowed = allowedOrigins.map(o => o.endsWith('/') ? o.slice(0, -1) : o);
