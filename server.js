@@ -461,14 +461,44 @@ app.post('/api/login', (req, res) => {
 
 // Logout endpoint
 app.post('/api/logout', requireSession, (req, res) => {
-    req.session.destroy((err) => {
-        if (err) {
-            console.error('Session destroy error:', err);
-            return res.status(500).json({ success: false, message: 'Logout error' });
-        }
+    const sessionId = req.sessionID;
+
+    const finish = () => {
         res.clearCookie('session');
+        setCorsHeaders(req, res);
         res.json({ success: true, message: 'Logout successful' });
-    });
+    };
+
+    const destroyInStore = (nextStep) => {
+        if (mongoStore && sessionId) {
+            mongoStore.destroy(sessionId, (storeErr) => {
+                if (storeErr) {
+                    console.error('Mongo store destroy error:', storeErr);
+                    // fall through; even if store delete fails we continue
+                } else {
+                    console.log('Session removed from Mongo store:', sessionId);
+                }
+                nextStep();
+            });
+        } else {
+            nextStep();
+        }
+    };
+
+    if (req.session && typeof req.session.destroy === 'function') {
+        req.session.destroy((err) => {
+            if (err) {
+                console.error('Session destroy error:', err);
+                setCorsHeaders(req, res);
+                return res.status(500).json({ success: false, message: 'Logout error' });
+            }
+            destroyInStore(finish);
+        });
+    } else if (sessionId) {
+        destroyInStore(finish);
+    } else {
+        finish();
+    }
 });
 
 // Get current session info
