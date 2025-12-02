@@ -235,12 +235,8 @@ const requireSession = (req, res, next) => {
                 responded = true;
                 // Set session ID
                 req.sessionID = token;
-                // Restore user data to existing session object (preserves Session prototype)
-                req.session.user = sessionData.user;
-                // Restore cookie if it exists
-                if (sessionData.cookie) {
-                    Object.assign(req.session.cookie, sessionData.cookie);
-                }
+                // Re-create the session using express-session helper to preserve prototype
+                req.session = req.sessionStore.createSession(req, sessionData);
                 return next();
             }
             
@@ -263,12 +259,8 @@ const requireSession = (req, res, next) => {
                 if (sessionData2 && sessionData2.user) {
                     // Set session ID
                     req.sessionID = prefixedToken;
-                    // Restore user data to existing session object (preserves Session prototype)
-                    req.session.user = sessionData2.user;
-                    // Restore cookie if it exists
-                    if (sessionData2.cookie) {
-                        Object.assign(req.session.cookie, sessionData2.cookie);
-                    }
+                    // Re-create the session using express-session helper to preserve prototype
+                    req.session = req.sessionStore.createSession(req, sessionData2);
                     return next();
                 }
                 
