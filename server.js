@@ -36,7 +36,7 @@ db.connect((err) => {
         console.error('Database connection failed:', err.message);
         console.error('Error code:', err.code);
     } else {
-        console.log('Connected to MySQL database');
+        // Connected successfully
     }
 });
 
@@ -53,7 +53,6 @@ const corsOptions = {
     origin: (origin, callback) => {
         // Allow requests with no origin (like mobile apps, Postman, or curl)
         if (!origin) {
-            console.log('[CORS] Request with no origin - allowing');
             return callback(null, true);
         }
         
@@ -61,10 +60,7 @@ const corsOptions = {
         const normalizedOrigin = origin.endsWith('/') ? origin.slice(0, -1) : origin;
         const normalizedAllowed = allowedOrigins.map(o => o.endsWith('/') ? o.slice(0, -1) : o);
         
-        console.log(`[CORS] Checking origin: ${normalizedOrigin}`);
-        
         if (normalizedAllowed.includes(normalizedOrigin)) {
-            console.log(`[CORS] Origin allowed: ${normalizedOrigin}`);
             callback(null, true);
         } else {
             console.error(`[CORS] Origin not allowed: ${normalizedOrigin}. Allowed: ${normalizedAllowed.join(', ')}`);
@@ -82,16 +78,6 @@ app.use(cors(corsOptions));
 
 // Handle preflight OPTIONS requests explicitly
 app.options('*', cors(corsOptions));
-
-// Debug middleware to log CORS headers
-app.use((req, res, next) => {
-    const origin = req.headers.origin;
-    if (origin) {
-        console.log(`[CORS Debug] Request from origin: ${origin}`);
-        console.log(`[CORS Debug] Method: ${req.method}, Path: ${req.path}`);
-    }
-    next();
-});
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -125,13 +111,9 @@ if (mongodb_user && mongodb_password) {
         console.error('MongoDB session store error:', error);
     });
     
-    mongoStore.on('connected', () => {
-        console.log('MongoDB session store connected');
-    });
+    mongoStore.on('connected', () => {});
     
-    mongoStore.on('disconnected', () => {
-        console.log('MongoDB session store disconnected');
-    });
+    mongoStore.on('disconnected', () => {});
 } else {
     console.warn('MongoDB session store not initialized - missing credentials');
 }
@@ -265,7 +247,6 @@ const requireSession = (req, res, next) => {
                 }
                 
                 // Not found in either format
-                console.log('Invalid or expired session token');
                 setCorsHeaders(req, res);
                 return res.status(401).json({ 
                     success: false, 
@@ -431,7 +412,6 @@ app.post('/api/login', (req, res) => {
                     console.error('Session save error:', err);
                     return res.status(500).json({ success: false, message: 'Session error' });
                 }
-                console.log("Success");
                 // Get session ID - express-session may prefix with 's:' which gets URL encoded
                 let sessionToken = req.sessionID;
                 // Remove 's:' prefix if present (express-session default)
@@ -444,7 +424,6 @@ app.post('/api/login', (req, res) => {
                 } catch (e) {
                     // If decode fails, use original
                 }
-                console.log('Session token generated:', sessionToken ? (sessionToken.substring(0, Math.min(20, sessionToken.length)) + '...') : 'null');
                 // Return session token for Unity WebGL (cookie may not work)
                 res.json({ 
                     success: true, 
@@ -475,8 +454,6 @@ app.post('/api/logout', requireSession, (req, res) => {
                 if (storeErr) {
                     console.error('Mongo store destroy error:', storeErr);
                     // fall through; even if store delete fails we continue
-                } else {
-                    console.log('Session removed from Mongo store:', sessionId);
                 }
                 nextStep();
             });
@@ -678,7 +655,5 @@ app.use((err, req, res, next) => {
 
 
 // Start server
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-});
+app.listen(PORT, () => {});
 
