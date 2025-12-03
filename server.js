@@ -84,6 +84,8 @@ app.use(express.urlencoded({ extended: true }));
 
 const expireTime = 1 * 60 * 60 * 1000; // expires after 1 hour (hours * minutes * seconds * millis)
 
+const passwordPolicyRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_\-+=\[\]{};':"\\|,.<>/?]).{10,}$/;
+
 if (!sessionSecret) {
     console.error('WARNING: SESSION_SECRET or NODE_SESSION_SECRET not set in .env file');
 }
@@ -286,12 +288,18 @@ app.post('/api/signup', async (req, res) => {
         return res.status(400).json({ success: false, message: 'Username and password required' });
     }
 
-    if (username.length < 3) {
-        return res.status(400).json({ success: false, message: 'Username must be at least 3 characters long' });
+    if (password.length < 10) {
+        return res.status(400).json({ 
+            success: false, 
+            message: 'Password must be at least 10 characters long and include upper/lower case letters, numbers, and symbols.' 
+        });
     }
 
-    if (password.length < 6) {
-        return res.status(400).json({ success: false, message: 'Password must be at least 6 characters long' });
+    if (!passwordPolicyRegex.test(password)) {
+        return res.status(400).json({ 
+            success: false, 
+            message: 'Password must include uppercase, lowercase, numeric, and symbol characters.' 
+        });
     }
 
     // Check if username already exists
