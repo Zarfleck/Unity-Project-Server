@@ -134,7 +134,7 @@ const isSecure = process.env.SECURE_COOKIES === 'true' || isProduction;
 app.use(session({ 
     name: 'session', // Cookie name (default is 'connect.sid')
     secret: sessionSecret || 'fallback-secret-change-in-production',
-    store: mongoStore,
+    store: mongoStore || undefined, // Use MongoDB store if available, otherwise use memory store
     saveUninitialized: false, 
     resave: false,
     cookie: {
@@ -394,6 +394,7 @@ app.post('/api/login', (req, res) => {
     const { username, password } = req.body;
 
     if (!username || !password) {
+        setCorsHeaders(req, res);
         return res.status(400).json({ success: false, message: 'Username and password required' });
     }
 
@@ -402,10 +403,12 @@ app.post('/api/login', (req, res) => {
     db.query(query, [username], async (err, results) => {
         if (err) {
             console.error('Database error:', err);
+            setCorsHeaders(req, res);
             return res.status(500).json({ success: false, message: 'Database error' });
         }
 
         if (results.length === 0) {
+            setCorsHeaders(req, res);
             return res.status(401).json({ success: false, message: 'Invalid username or password' });
         }
 
@@ -425,7 +428,13 @@ app.post('/api/login', (req, res) => {
             req.session.save((err) => {
                 if (err) {
                     console.error('Session save error:', err);
-                    return res.status(500).json({ success: false, message: 'Session error' });
+                    console.error('Error details:', err.message, err.stack);
+                    setCorsHeaders(req, res);
+                    return res.status(500).json({ 
+                        success: false, 
+                        message: 'Session error',
+                        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+                    });
                 }
                 // Get session ID - express-session may prefix with 's:' which gets URL encoded
                 let sessionToken = req.sessionID;
@@ -440,6 +449,7 @@ app.post('/api/login', (req, res) => {
                     // If decode fails, use original
                 }
                 // Return session token for Unity WebGL (cookie may not work)
+                setCorsHeaders(req, res);
                 res.json({ 
                     success: true, 
                     message: 'Login successful', 
@@ -448,6 +458,7 @@ app.post('/api/login', (req, res) => {
                 });
             });
         } else {
+            setCorsHeaders(req, res);
             res.status(401).json({ success: false, message: 'Invalid username or password' });
         }
     });
