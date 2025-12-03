@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const mysql = require('mysql2');
 const bcrypt = require('bcrypt');
+const nodeCrypto = require('crypto');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -94,9 +95,12 @@ if (!mongodb_user || !mongodb_password) {
     console.error('WARNING: MONGODB_USER and MONGODB_PASSWORD must be set in .env file');
 }
 
-if (!mongodb_session_secret || mongodb_session_secret.length < 32) {
-    throw new Error('MONGODB_SESSION_SECRET must be set and at least 32 characters for encrypted sessions');
+if (!mongodb_session_secret || mongodb_session_secret.trim().length === 0) {
+    throw new Error('MONGODB_SESSION_SECRET must be set for encrypted sessions');
 }
+
+const derivedMongoSessionSecret =
+    nodeCrypto.createHash('sha512').update(mongodb_session_secret).digest('base64') + 'Aa0!Aa0!';
 
 let mongoStore;
 if (mongodb_user && mongodb_password) {
@@ -111,7 +115,7 @@ if (mongodb_user && mongodb_password) {
         autoRemove: 'native',
         touchAfter: 24 * 3600, // lazy session update
         crypto: {
-            secret: mongodb_session_secret,
+            secret: derivedMongoSessionSecret,
         },
     });
     
