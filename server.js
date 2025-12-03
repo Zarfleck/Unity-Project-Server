@@ -527,13 +527,14 @@ app.post('/api/get-user', requireSession, (req, res) => {
     const targetUserId = user_id ? parseInt(user_id) : sessionUserId;
     const targetUsername = username || sessionUsername;
 
-    // Security check: ensure user can only access their own data
+    // Authorization check: if user_id is provided in body, validate it matches session
+    // Return 400 for unauthorized edit attempts (per requirements)
     if (targetUserId && targetUserId !== sessionUserId) {
         setCorsHeaders(req, res);
-        return res.status(403).json({ 
+        return res.status(400).json({ 
             success: false, 
-            message: 'Access denied. You can only access your own user data.',
-            code: 'ACCESS_DENIED'
+            message: 'Unauthorized: You can only access your own user data.',
+            code: 'UNAUTHORIZED_ACCESS'
         });
     }
 
@@ -558,12 +559,13 @@ app.post('/api/get-user', requireSession, (req, res) => {
         const user = results[0];
 
         // Verify the user matches the session
+        // Return 400 for unauthorized access attempts (per requirements)
         if (user.user_id !== sessionUserId) {
             setCorsHeaders(req, res);
-            return res.status(403).json({ 
+            return res.status(400).json({ 
                 success: false, 
-                message: 'Access denied. You can only access your own user data.',
-                code: 'ACCESS_DENIED'
+                message: 'Unauthorized: You can only access your own user data.',
+                code: 'UNAUTHORIZED_ACCESS'
             });
         }
 
@@ -610,8 +612,21 @@ app.post('/api/game', requireSession, (req, res) => {
 
 // Increment level endpoint
 app.post('/api/increment-level', requireSession, (req, res) => {
-    // Use session user_id to ensure user can only increment their own level
-    const user_id = req.session.user.user_id;
+    const sessionUserId = req.session.user.user_id;
+    const requestedUserId = req.body.user_id ? parseInt(req.body.user_id) : null;
+
+    // Authorization check: if user_id is provided in body, validate it matches session
+    if (requestedUserId !== null && requestedUserId !== sessionUserId) {
+        setCorsHeaders(req, res);
+        return res.status(400).json({ 
+            success: false, 
+            message: 'Unauthorized: You can only edit your own game data.',
+            code: 'UNAUTHORIZED_EDIT'
+        });
+    }
+
+    // Always use session user_id for the actual database operation (security)
+    const user_id = sessionUserId;
 
     // Update user's level by incrementing by 1
     const query = 'UPDATE user SET level = level + 1 WHERE user_id = ?';
@@ -619,29 +634,49 @@ app.post('/api/increment-level', requireSession, (req, res) => {
     db.query(query, [user_id], (err, results) => {
         if (err) {
             console.error('Database error:', err);
+            setCorsHeaders(req, res);
             return res.status(500).json({ success: false, message: 'Database error' });
         }
 
         if (results.affectedRows === 0) {
+            setCorsHeaders(req, res);
             return res.status(404).json({ success: false, message: 'User not found' });
         }
 
+        setCorsHeaders(req, res);
         res.json({ success: true, message: 'Level incremented successfully' });
     });
 });
 
 app.post('/api/reset-level', requireSession, (req, res) => {
-    // Use session user_id to ensure user can only reset their own level
-    const user_id = req.session.user.user_id;
+    const sessionUserId = req.session.user.user_id;
+    const requestedUserId = req.body.user_id ? parseInt(req.body.user_id) : null;
+
+    // Authorization check: if user_id is provided in body, validate it matches session
+    if (requestedUserId !== null && requestedUserId !== sessionUserId) {
+        setCorsHeaders(req, res);
+        return res.status(400).json({ 
+            success: false, 
+            message: 'Unauthorized: You can only edit your own game data.',
+            code: 'UNAUTHORIZED_EDIT'
+        });
+    }
+
+    // Always use session user_id for the actual database operation (security)
+    const user_id = sessionUserId;
     const query = 'UPDATE user SET level = 1 WHERE user_id = ?';
+    
     db.query(query, [user_id], (err, results) => {
         if (err) {
             console.error('Database error:', err);
+            setCorsHeaders(req, res);
             return res.status(500).json({ success: false, message: 'Database error' });
         }
         if (results.affectedRows === 0) {
+            setCorsHeaders(req, res);
             return res.status(404).json({ success: false, message: 'User not found' });
         }
+        setCorsHeaders(req, res);
         res.json({ success: true, message: 'Level reset successfully' });
     });
 });
