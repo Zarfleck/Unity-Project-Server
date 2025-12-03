@@ -569,21 +569,17 @@ app.post('/api/get-user', requireSession, (req, res) => {
 
 // Game endpoint - retrieves level from user table
 app.post('/api/game', requireSession, (req, res) => {
-    // Use session user_id if available, otherwise use request body
-    const user_id = req.session.user.user_id || req.body.user_id;
-    const username = req.body.username;
+    // Use session user_id to ensure user can only access their own game data
+    const user_id = req.session.user.user_id;
 
-    if (!username && !user_id) {
-        return res.status(400).json({ success: false, message: 'Username or user_id required' });
+    if (!user_id) {
+        return res.status(400).json({ success: false, message: 'User ID required' });
     }
 
     // Query database for user's level
-    const query = user_id 
-        ? 'SELECT level FROM user WHERE user_id = ?'
-        : 'SELECT level FROM user WHERE username = ?';
-    const param = user_id || username;
+    const query = 'SELECT level FROM user WHERE user_id = ?';
 
-    db.query(query, [param], (err, results) => {
+    db.query(query, [user_id], (err, results) => {
         if (err) {
             console.error('Database error:', err);
             return res.status(500).json({ success: false, message: 'Database error' });
