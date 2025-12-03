@@ -94,6 +94,10 @@ if (!mongodb_user || !mongodb_password) {
     console.error('WARNING: MONGODB_USER and MONGODB_PASSWORD must be set in .env file');
 }
 
+if (!mongodb_session_secret || mongodb_session_secret.length < 32) {
+    throw new Error('MONGODB_SESSION_SECRET must be set and at least 32 characters for encrypted sessions');
+}
+
 let mongoStore;
 if (mongodb_user && mongodb_password) {
     // URL encode credentials to handle special characters
@@ -106,6 +110,9 @@ if (mongodb_user && mongodb_password) {
         ttl: 3600,  // Session expiration in seconds (1 hour = 3600 seconds)
         autoRemove: 'native',
         touchAfter: 24 * 3600, // lazy session update
+        crypto: {
+            secret: mongodb_session_secret,
+        },
     });
     
     // Handle store errors
